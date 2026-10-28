@@ -19,3 +19,4 @@ terraform.rc
 # OS / editor
 .DS_Store
 .vscode/
+tfplan
