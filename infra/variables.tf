@@ -2,6 +2,11 @@ variable "project" {
   description = "Short project name used in resource names"
   type        = string
   default     = "cloudstarter"
+
+  validation {
+    condition     = can(regex("^[a-z0-9]{3,12}$", var.project))
+    error_message = "project must be 3 to 12 lowercase letters or digits."
+  }
 }
 
 variable "environment" {
