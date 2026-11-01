@@ -1,0 +1,85 @@
+name: terraform
+
+on:
+  pull_request:
+    branches: [main]
+    paths: ["infra/**", "site/**", ".github/workflows/terraform.yml"]
+  push:
+    branches: [main]
+    paths: ["infra/**", "site/**", ".github/workflows/terraform.yml"]
+  workflow_dispatch:
+
+permissions:
+  id-token: write   # required to request the OIDC token
+  contents: read
+
+concurrency:
+  group: terraform-state   # one run at a time against the shared state
+  cancel-in-progress: false
+
+env:
+  ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+  ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+  ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+  ARM_USE_OIDC: "true"
+
+defaults:
+  run:
+    working-directory: infra
+
+jobs:
+  plan:
+    name: Plan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Format check
+        run: terraform fmt -check -recursive
+
+      - name: Init
+        run: terraform init -input=false
+
+      - name: Validate
+        run: terraform validate
+
+      - name: Plan
+        run: terraform plan -input=false -out tfplan
+
+      - name: Plan summary
+        run: |
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          terraform show -no-color tfplan >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tfplan
+          path: infra/tfplan
+
+  apply:
+    name: Apply
+    needs: plan
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Init
+        run: terraform init -input=false
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: tfplan
+          path: infra
+
+      - name: Apply the reviewed plan
+        run: terraform apply -input=false tfplan
